@@ -8,10 +8,16 @@ sys.path.append(os.path.abspath("/eos/home-d/dcostasr/SWAN_projects/NiCf/offline
 from src.read_data import process_and_write_parts, load_concatenated, read_mcc_offsets
 from wcte.brbtools import sort_run_files, get_part_files
 
+files = input("Do you want calibrated or uncalibrated data?: ")
 run = input("Which run do you want to process? (####) --> ")
 
 print("Reading run and part files...")
-run_files  = sort_run_files(f"/eos/experiment/wcte/data/2025_commissioning/offline_data/{run}/WCTE_offline_R{run}S*P*.root")
+if files == "uncalibrated":
+    run_files  = sort_run_files(f"/eos/experiment/wcte/data/2025_commissioning/offline_data/{run}/WCTE_offline_R{run}S*P*.root")
+
+elif files == "calibrated":
+    run_files = sort_run_files(f"/eos/experiment/wcte/data/2025_commissioning/processed_offline_data/production_v0/{run}/WCTE_offline_R{run}S*P*.root")
+
 part_files = get_part_files(run_files)
 mcc_map = read_mcc_offsets()
 
@@ -24,12 +30,20 @@ parts_to_process = input("Which parts do you want to read? --> ")
 
 # Case: "all"
 if parts_to_process.strip().lower() == "all":
-    process_and_write_parts(run_files, part_files, mcc_map, max_card=132, max_chan=19, outdir=f"tmp_parquet/{run}/")
+    if files == "calibrated":
+        process_and_write_parts(run_files, part_files, mcc_map=None, max_card=132, max_chan=19, outdir=f"tmp_parquet/{run}_calibrated/")
+    
+    elif files == "uncalibrated":
+        process_and_write_parts(run_files, part_files, mcc_map, max_card=132, max_chan=19, outdir=f"tmp_parquet/{run}/")
 
 # Case: input just one number, e.g. "3"
 elif parts_to_process.isdigit():
     part_idx = int(parts_to_process)
-    process_and_write_parts(run_files, [part_idx], mcc_map, max_card=132, max_chan=19, outdir=f"tmp_parquet/{run}/")
+    if files == "calibrated":
+        process_and_write_parts(run_files, [part_idx], mcc_map=None, max_card=132, max_chan=19, outdir=f"tmp_parquet/{run}_calibrated/")
+    
+    elif files == "uncalibrated":
+        process_and_write_parts(run_files, [part_idx], mcc_map, max_card=132, max_chan=19, outdir=f"tmp_parquet/{run}/")
 
 # Case: comma separated list of numbers, e.g. "1,2,5"
 else:
@@ -41,7 +55,11 @@ else:
         if duplicates:
             raise ValueError(f"Duplicated values found in the list: {duplicates}")
 
-        process_and_write_parts(run_files, [part_files[i] for i in parts_list], mcc_map, max_card=132, max_chan=19, outdir=f"tmp_parquet/{run}/")
+        if files == "calibrated":
+            process_and_write_parts(run_files, [part_files[i] for i in parts_list], mcc_map=None, max_card=132, max_chan=19, outdir=f"tmp_parquet/{run}_calibrated/")
+        
+        elif files == "uncalibrated":
+            process_and_write_parts(run_files, [part_files[i] for i in parts_list], mcc_map, max_card=132, max_chan=19, outdir=f"tmp_parquet/{run}/")
         
     except ValueError as e:
         raise ValueError(f"Invalid input. {e}")
