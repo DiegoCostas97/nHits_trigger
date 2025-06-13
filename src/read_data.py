@@ -142,6 +142,7 @@ def nHits(mode, hit_times, w, thresh_min, thresh_max, pre_window, post_window, j
     # SINGLE EVENT MODE
     if mode=="single_event":
         triggered_hits_index = {}
+        triggered_hits_time  = {}
 
         ht = ak.to_numpy(hit_times[event])
 
@@ -155,6 +156,7 @@ def nHits(mode, hit_times, w, thresh_min, thresh_max, pre_window, post_window, j
         trigger_indices = np.where((counts >= thresh_min) & (counts < thresh_max))[0]
 
         event_hits = []
+        event_hit_times = []
         last_trigger_time = -np.inf  # First trigger always need to exist
 
         # Search for the rest of the hits in the trigger
@@ -175,19 +177,23 @@ def nHits(mode, hit_times, w, thresh_min, thresh_max, pre_window, post_window, j
             t_min = first_hit_time - pre_window
             t_max = last_hit_time + post_window
 
-            indices_in_window = np.where((ht >= t_min) & (ht <= t_max))[0]
+            indices_in_window   = np.where((ht >= t_min) & (ht <= t_max))[0]
+            hit_times_in_window = ht[(ht >= t_min) & (ht <= t_max)]
             event_hits.append(indices_in_window)
+            event_hit_times.append(hit_times_in_window)
 
             last_trigger_time = first_hit_time  # or maybe last_hit_time 
 
         # Update dictionary
         if len(event_hits) > 0:
             triggered_hits_index[event] = event_hits
+            triggered_hits_time[event]  = event_hit_times
 
     # MULTIPLE EVENTS MODE
     elif mode == "multiple_events":
         nevents = len(hit_times)
         triggered_hits_index = {}
+        triggered_hits_time  = {}
 
         for event in tqdm(range(nevents), total=nevents, leave=progress_bar):
             ht = ak.to_numpy(hit_times[event])
@@ -206,6 +212,7 @@ def nHits(mode, hit_times, w, thresh_min, thresh_max, pre_window, post_window, j
                 continue
 
             event_hits = []
+            event_hit_times = []
             last_trigger_time = -np.inf  # First trigger always need to exist
 
             # Search for the rest of the hits in the trigger
@@ -227,14 +234,17 @@ def nHits(mode, hit_times, w, thresh_min, thresh_max, pre_window, post_window, j
                 t_max = last_hit_time + post_window
 
                 indices_in_window = np.where((ht >= t_min) & (ht <= t_max))[0]
+                hit_times_in_window = ht[(ht >= t_min) & (ht <= t_max)]
                 event_hits.append(indices_in_window)
+                event_hit_times.append(hit_times_in_window)
 
                 last_trigger_time = first_hit_time  # or maybe last_hit_time 
 
             # Update dictionary
             if len(event_hits) > 0:
                 triggered_hits_index[event] = event_hits
+                triggered_hits_time[event]  = event_hit_times
     else:
         print("enter a valid mode name")
 
-    return triggered_hits_index
+    return triggered_hits_index, triggered_hits_time
