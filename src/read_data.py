@@ -32,7 +32,7 @@ def read_file(files, parts, evt_offset):
 
     return file_hit_card_ids, file_hit_channel_ids, file_hit_times, file_hit_charges, file_event_number, file_window_time, file_hit_slot_ids, file_hit_position_ids
 
-def process_and_write_parts(run_files, good_parts, mcc_map, max_card, max_chan, outdir="tmp_parquet"):
+def process_and_write_parts(run_files, good_parts, mpmt_map, max_slot, max_pos, outdir="tmp_parquet"):
     os.makedirs(outdir, exist_ok=True)
 
     # Remove Directories If Run Is Repeated
@@ -44,16 +44,16 @@ def process_and_write_parts(run_files, good_parts, mcc_map, max_card, max_chan, 
     for i, part in enumerate(tqdm(good_parts, desc="Processing parts")):
         file_hit_card_ids, file_hit_channel_ids, file_hit_times, file_hit_charges, file_event_number, file_window_time, file_hit_slot_ids, file_hit_position_ids = read_file(run_files, part, evt_offset)
 
-        if mcc_map != None:
+        if mpmt_map != None:
             # Build lookup
-            lookup = np.zeros((max_card + 1, max_chan + 1))
-            for (card, chan), shift in mcc_map.items():
+            lookup = np.zeros((max_slot + 1, max_pos + 1))
+            for (card, chan), shift in mpmt_map.items():
                 lookup[card, chan] = shift
 
             # Hit Times Correction
-            flat_card_ids     = ak.ravel(file_hit_card_ids)
-            flat_chan_ids     = ak.ravel(file_hit_channel_ids)
-            flat_corrections  = lookup[flat_card_ids, flat_chan_ids]
+            flat_slot_ids     = ak.ravel(file_hit_slot_ids)
+            flat_pos_ids      = ak.ravel(file_hit_position_ids)
+            flat_corrections  = lookup[flat_slot_ids, flat_pos_ids]
             corrections       = ak.unflatten(flat_corrections, ak.num(file_hit_card_ids))
 
             term1 = file_hit_times
@@ -61,9 +61,9 @@ def process_and_write_parts(run_files, good_parts, mcc_map, max_card, max_chan, 
             # term3 = ((file_event_number % 512 == 511) & (file_hit_times < 2**34)) * (2**35)
             term4 = file_window_time
             # corrected_times = term1 + term2 + term3 + corrections
-            corrected_times = term1 + term4 + corrections 
+            corrected_times = term1 + term4 - corrections 
         
-        elif mcc_map == None:
+        elif mpmt_map == None:
 
             term1 = file_hit_times
             # term2 = (file_event_number // 512) * (2**35)
@@ -100,7 +100,7 @@ def load_concatenated(outdir="./tmp_parquet"):
         "window_time":  load("window_time_part*.parquet")
     }
 
-def read_mcc_offsets(path='/eos/home-d/dcostasr/SWAN_projects/NiCf/offline_trigger/mmc_map_R1609.json'):
+def read_mpmt_offsets(path='/eos/home-d/dcostasr/SWAN_projects/NiCf/offline_trigger/mmc_map_R1609.json'):
     with open(path) as f:
         mcc_map = json.load(f)
 
