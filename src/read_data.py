@@ -46,7 +46,7 @@ def process_and_write_parts(run_files, good_parts, mpmt_map, max_slot, max_pos, 
 
         if mpmt_map != None:
             # Build lookup
-            lookup = np.zeros((max_slot + 1, max_pos + 1))
+            lookup = np.zeros((max_slot, max_pos))
             for (card, chan), shift in mpmt_map.items():
                 lookup[card, chan] = shift
 
