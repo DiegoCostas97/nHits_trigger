@@ -103,7 +103,7 @@ def load_concatenated(outdir="./tmp_parquet"):
         "event_number": load("event_number_part*.parquet"),
         "hit_times":    load("hit_times_part*.parquet"),
         "window_time":  load("window_time_part*.parquet"),
-        "hit_pmt_has_time_constant": load("hit_pmt_has_time_constant")
+        "hit_pmt_has_time_constant": load("hit_pmt_has_time_constant*.parquet")
     }
 
 def read_mpmt_offsets(path='/eos/home-d/dcostasr/SWAN_projects/NiCf/offline_trigger/mmc_map_R1609.json'):
