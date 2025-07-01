@@ -12,14 +12,16 @@ def read_file(files, parts, evt_offset):
     tree = uproot.open(files[parts] + ":WCTEReadoutWindows")
     
     # Read the variables
-    file_hit_card_ids     = ak.values_astype(tree["hit_mpmt_card_ids"]   .array(), np.int16)
-    file_hit_channel_ids  = ak.values_astype(tree["hit_pmt_channel_ids"] .array(), np.int8)
-    file_hit_times        = ak.values_astype(tree["hit_pmt_times"]       .array(), np.float64)
-    file_hit_charges      = ak.values_astype(tree["hit_pmt_charges"]     .array(), np.float64)
-    file_hit_slot_ids     = ak.values_astype(tree["hit_mpmt_slot_ids"]   .array(), np.int16)
-    file_hit_position_ids = ak.values_astype(tree["hit_pmt_position_ids"].array(), np.int16)
-    window_time           = ak.values_astype(tree["window_time"]         .array(), np.float64)
-    event_number          = ak.values_astype(tree["event_number"]        .array(), np.int64)
+    file_hit_card_ids              = ak.values_astype(tree["hit_mpmt_card_ids"]        .array(), np.int16)
+    file_hit_channel_ids           = ak.values_astype(tree["hit_pmt_channel_ids"]      .array(), np.int8)
+    file_hit_times                 = ak.values_astype(tree["hit_pmt_times"]            .array(), np.float64)
+    file_hit_times_calib           = ak.values_astype(tree["hit_pmt_calibrated_times"] .array(), np.float64)
+    file_hit_charges               = ak.values_astype(tree["hit_pmt_charges"]          .array(), np.float64)
+    file_hit_slot_ids              = ak.values_astype(tree["hit_mpmt_slot_ids"]        .array(), np.int16)
+    file_hit_position_ids          = ak.values_astype(tree["hit_pmt_position_ids"]     .array(), np.int16)
+    file_hit_pmt_has_time_constant = ak.Array(tree["hit_pmt_has_time_constant"].array())
+    window_time                    = ak.values_astype(tree["window_time"]              .array(), np.float64)
+    event_number                   = ak.values_astype(tree["event_number"]             .array(), np.int64)
 
     # Number of hits per event
     n_hits_per_event = ak.num(file_hit_card_ids)
@@ -30,7 +32,7 @@ def read_file(files, parts, evt_offset):
     file_event_number = ak.unflatten(file_event_number, n_hits_per_event)
     file_window_time  = ak.unflatten(file_window_time, n_hits_per_event)
 
-    return file_hit_card_ids, file_hit_channel_ids, file_hit_times, file_hit_charges, file_event_number, file_window_time, file_hit_slot_ids, file_hit_position_ids
+    return file_hit_card_ids, file_hit_channel_ids, file_hit_times, file_hit_times_calib, file_hit_charges, file_hit_pmt_has_time_constant, file_event_number, file_window_time, file_hit_slot_ids, file_hit_position_ids
 
 def process_and_write_parts(run_files, good_parts, mpmt_map, max_slot, max_pos, outdir="tmp_parquet"):
     os.makedirs(outdir, exist_ok=True)
@@ -42,7 +44,7 @@ def process_and_write_parts(run_files, good_parts, mpmt_map, max_slot, max_pos, 
     evt_offset = 0
 
     for i, part in enumerate(tqdm(good_parts, desc="Processing parts")):
-        file_hit_card_ids, file_hit_channel_ids, file_hit_times, file_hit_charges, file_event_number, file_window_time, file_hit_slot_ids, file_hit_position_ids = read_file(run_files, part, evt_offset)
+        file_hit_card_ids, file_hit_channel_ids, file_hit_times, file_hit_times_calib, file_hit_charges, file_hit_pmt_has_time_constant, file_event_number, file_window_time, file_hit_slot_ids, file_hit_position_ids = read_file(run_files, part, evt_offset)
 
         if mpmt_map != None:
             # Build lookup
@@ -56,12 +58,14 @@ def process_and_write_parts(run_files, good_parts, mpmt_map, max_slot, max_pos, 
             flat_corrections  = lookup[flat_slot_ids, flat_pos_ids]
             corrections       = ak.unflatten(flat_corrections, ak.num(file_hit_card_ids))
 
-            term1 = file_hit_times
-            # term2 = (file_event_number // 512) * (2**35)
-            # term3 = ((file_event_number % 512 == 511) & (file_hit_times < 2**34)) * (2**35)
-            term4 = file_window_time
-            # corrected_times = term1 + term2 + term3 + corrections
-            corrected_times = term1 + term4 - corrections 
+            term1 = file_hit_times_calib
+            corrected_times = term1 - corrections 
+
+            # Remove Cards > 120 
+            corrected_times = corrected_times[file_hit_charges < 1e4]
+            corrected_times = corrected_times[file_hit_card_ids < 120]
+            corrected_times = corrected_times[file_hit_pmt_has_time_constant != 0]
+            corrected_times = ak.sort(corrected_times)
         
         elif mpmt_map == None:
 
@@ -81,6 +85,7 @@ def process_and_write_parts(run_files, good_parts, mpmt_map, max_slot, max_pos, 
         ak.to_parquet(file_event_number,     f"{outdir}/event_number_part{i}.parquet")
         ak.to_parquet(file_window_time,      f"{outdir}/window_time_part{i}.parquet")
         ak.to_parquet(corrected_times,       f"{outdir}/hit_times_part{i}.parquet")
+        ak.to_parquet(file_hit_pmt_has_time_constant, f"{outdir}/file_hit_pmt_has_time_constant{i}.parquet")
 
         evt_offset = file_event_number[-1][-1] + 1
 
@@ -97,7 +102,8 @@ def load_concatenated(outdir="./tmp_parquet"):
         "charges":      load("charges_part*.parquet"),
         "event_number": load("event_number_part*.parquet"),
         "hit_times":    load("hit_times_part*.parquet"),
-        "window_time":  load("window_time_part*.parquet")
+        "window_time":  load("window_time_part*.parquet"),
+        "hit_pmt_has_time_constant": load("hit_pmt_has_time_constant")
     }
 
 def read_mpmt_offsets(path='/eos/home-d/dcostasr/SWAN_projects/NiCf/offline_trigger/mmc_map_R1609.json'):
